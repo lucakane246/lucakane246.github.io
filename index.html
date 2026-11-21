@@ -1132,16 +1132,34 @@ function flowScroll() {
   if (editing) return;
   const vh = window.innerHeight, H = document.documentElement.scrollHeight - vh;
   const bar = document.getElementById("flow-progress"); if (bar) bar.style.transform = `scaleX(${H > 0 ? Math.min(1, window.scrollY / H) : 0})`;
-  if (!reduceMotion()) flowFx.forEach(el => {
-    const r = el.getBoundingClientRect();
-    if (r.bottom < -200 || r.top > vh + 200) return;
-    const c = r.top + r.height / 2;
-    const t = Math.max(-1.5, Math.min(1.5, (c - vh / 2) / (vh / 2)));
-    const a = Math.abs(t);
-    const o = a < 0.42 ? 1 : Math.max(0, 1 - (a - 0.42) / 0.36);
-    el.style.opacity = o.toFixed(3);
-    el.style.transform = `translateY(${(t * 30).toFixed(1)}px)`;
-  });
+  if (!reduceMotion()) {
+    const fade = (el) => {
+      const r = el.getBoundingClientRect();
+      const t = Math.max(-1.5, Math.min(1.5, (r.top + r.height / 2 - vh / 2) / (vh / 2)));
+      const a = Math.abs(t);
+      return { t, o: a < 0.42 ? 1 : Math.max(0, 1 - (a - 0.42) / 0.36) };
+    };
+    const groupsSeen = new Set();
+    flowFx.forEach(el => {
+      const box = el.parentElement && el.parentElement.closest(".chapter-items, .updates-list");
+      if (box) {
+        // A section's projects move as one: the first one decides the fade in, the last one the fade out.
+        if (groupsSeen.has(box)) return; groupsSeen.add(box);
+        const items = [...box.children].filter(x => x.classList.contains("fx"));
+        const f = fade(items[0]), l = fade(items[items.length - 1]);
+        const inT = f.t > 0 ? f : { t: 0, o: 1 }, outT = l.t < 0 ? l : { t: 0, o: 1 };
+        const o = Math.min(inT.o, outT.o), shift = (inT.o < outT.o ? inT.t : outT.o < 1 ? outT.t : 0) * 30;
+        items.forEach(x => { x.style.opacity = o.toFixed(3); x.style.transform = `translateY(${shift.toFixed(1)}px)`; });
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.bottom < -200 || r.top > vh + 200) return;
+      const { t, o } = fade(el);
+      el.style.opacity = o.toFixed(3);
+      el.style.transform = `translateY(${(t * 30).toFixed(1)}px)`;
+    });
+  }
+
   // Section titles: hidden until their section is on screen, then fade in scrambled and settle.
   flowHeads.forEach(x => {
     const r = x.sec.getBoundingClientRect(), hr = x.el.getBoundingClientRect();
