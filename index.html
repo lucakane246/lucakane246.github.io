@@ -358,6 +358,7 @@ th { font-family: var(--font-body, sans-serif); font-size: 0.8rem; text-transfor
 
 .chapter { padding: 16vh 0 10vh; }
 .chapter-grid { display: grid; grid-template-columns: minmax(220px, 0.8fr) 1.6fr; gap: 7vw; align-items: start; }
+.chapter-head { align-self: stretch; }
 .chapter-head .sticky { position: sticky; top: 24vh; }
 .chapter-head h2 { font-size: calc(clamp(3rem, 6.4vw, 6rem) * var(--hs)); line-height: .95; }
 .chapter-intro { margin-top: 22px; color: var(--muted); font-size: 1rem; max-width: 34ch; }
@@ -391,6 +392,9 @@ footer.flow-foot { margin-top: 0; border-top: 0; overflow: visible; }
 .fx { will-change: opacity, transform; }
 .flow > *, .flow-top { transition: opacity 1.6s var(--ease); }
 .chapter-head h2 { text-wrap: wrap; }
+.chapter-head .sticky { opacity: 0; transform: translateY(26px); transition: opacity 1.1s var(--ease), transform 1.3s var(--ease); }
+.chapter-head .sticky.on { opacity: 1; transform: none; }
+body.calm .chapter-head .sticky { opacity: 1; transform: none; }
 .sc { position: relative; color: transparent; transition: color .35s var(--ease); }
 .sc::after { content: attr(data-g); position: absolute; left: 50%; top: 0; transform: translateX(-50%); color: var(--muted); opacity: .55; transition: opacity .3s var(--ease); pointer-events: none; }
 .sc.done { color: inherit; }
@@ -994,7 +998,8 @@ let flowFx = [], flowChapters = [], suppressScroll = false, introDone = false, s
 // Turns random characters into the real text, left to right.
 function scramble(el, dur, perLetterMax, delay) {
   if (!el || reduceMotion() || el.dataset.scrambling) return Promise.resolve();
-  const orig = el.innerHTML; el.dataset.scrambling = "1";
+  if (el._orig == null) el._orig = el.innerHTML; else el.innerHTML = el._orig;
+  el.dataset.scrambling = "1";
   const LO = "abcdeghknopqrsuvxyz", UP = "ABCDEGHKNOPRSUVXYZ", DG = "0123456789";
   const pickFor = (ch) => { const set = /[A-Z]/.test(ch) ? UP : /[0-9]/.test(ch) ? DG : LO; return set[(Math.random() * set.length) | 0]; };
   const cells = []; const texts = [];
@@ -1081,7 +1086,7 @@ function flowHTML() {
 }
 function photoSrcSafe(s) { return s; }
 
-let introBusy = false, pendingFlow = false;
+let introBusy = false, pendingFlow = false, flowHeads = [];
 // Swap in late-arriving content (updates.md) without redrawing the page, so animations aren't cut off.
 function refreshFlowQuiet() {
   if (editing) return;
@@ -1092,11 +1097,10 @@ function refreshFlowQuiet() {
   const fresh = tmp.querySelector("#updates");
   if (!fresh) return;
   const h = fresh.querySelector('[data-scramble="h"]'), oh = old.querySelector('[data-scramble="h"]');
-  if (h && oh && !oh.dataset.scrambling) h.replaceWith(oh);
   old.replaceWith(fresh);
   flowFx = [...app.querySelectorAll(".fx")];
   flowChapters = [...app.querySelectorAll(".flow > section, .flow > #projects > section")];
-  if (scrambleObs) { const nh = fresh.querySelector('[data-scramble="h"]'); if (nh && !nh.dataset.done) scrambleObs.observe(nh); }
+  flowHeads = [...app.querySelectorAll(".chapter-head .sticky")].map(el => ({ el, sec: el.closest("section"), h: el.querySelector('[data-scramble="h"]') }));
   flowScroll();
 }
 function renderFlow() {
@@ -1116,11 +1120,7 @@ function renderFlow() {
       if (pendingFlow) { pendingFlow = false; refreshFlowQuiet(); }
     });
   } else introDone = true;
-  if (scrambleObs) scrambleObs.disconnect();
-  if ("IntersectionObserver" in window && !reduceMotion()) {
-    scrambleObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { scramble(e.target, 1200, 110); scrambleObs.unobserve(e.target); } }), { rootMargin: "0px 0px -25% 0px" });
-    app.querySelectorAll('[data-scramble="h"]').forEach(el => scrambleObs.observe(el));
-  }
+  flowHeads = [...app.querySelectorAll(".chapter-head .sticky")].map(el => ({ el, sec: el.closest("section"), h: el.querySelector('[data-scramble="h"]') }));
   updateEditbarState();
   applyFlowHash(false);
   flowScroll();
@@ -1136,12 +1136,22 @@ function flowScroll() {
     const r = el.getBoundingClientRect();
     if (r.bottom < -200 || r.top > vh + 200) return;
     const c = r.top + r.height / 2;
-    const t = (c - vh / 2) / (vh / 2 + Math.min(r.height, vh) / 2);
+    const t = Math.max(-1.5, Math.min(1.5, (c - vh / 2) / (vh / 2)));
     const a = Math.abs(t);
-    const o = a < 0.55 ? 1 : Math.max(0, 1 - (a - 0.55) / 0.45);
+    const o = a < 0.42 ? 1 : Math.max(0, 1 - (a - 0.42) / 0.36);
     el.style.opacity = o.toFixed(3);
-    el.style.transform = `translateY(${(t * 36).toFixed(1)}px)`;
+    el.style.transform = `translateY(${(t * 30).toFixed(1)}px)`;
   });
+  // Section titles: hidden until their section is on screen, then fade in scrambled and settle.
+  flowHeads.forEach(x => {
+    const r = x.sec.getBoundingClientRect(), hr = x.el.getBoundingClientRect();
+    const on = reduceMotion() || (hr.top < vh * 0.66 && r.bottom > vh * 0.5);
+    if (on && !x.el.classList.contains("on")) { x.el.classList.add("on"); if (x.h) scramble(x.h, 1200, 110, 150); }
+    else if (!on && x.el.classList.contains("on")) x.el.classList.remove("on");
+  });
+  // The opening headline drifts away as you scroll down.
+  const hero = app.querySelector(".about-hero");
+  if (hero && !reduceMotion()) { const k = Math.min(1, window.scrollY / (vh * 0.6)); hero.style.opacity = (1 - k).toFixed(3); hero.style.transform = `translateY(${(-k * 40).toFixed(1)}px)`; }
   // The small label at the top names the section you're in.
   let cur = flowChapters[0];
   flowChapters.forEach(s => { if (s.getBoundingClientRect().top < vh * 0.45) cur = s; });
