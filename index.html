@@ -46,7 +46,7 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; font-size: var(--base, 17px); scroll-behavior: smooth; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body, "Geist", Arial, sans-serif); font-size: 1rem; line-height: 1.6; font-feature-settings: "ss01", "cv11"; -webkit-font-smoothing: antialiased; }
 ::selection { background: var(--accent); color: #fff; }
 img { max-width: 100%; display: block; }
@@ -298,11 +298,9 @@ main.enter { animation: fade .5s var(--ease) both; }
 .rv.in { opacity: 1; transform: none; }
 .rise { animation: rise .9s var(--ease) both; animation-delay: var(--d, 0s); }
 .hero-name .ln { display: inline-block; animation: rise 1.1s var(--ease) both; animation-delay: var(--d, 0s); }
-@media (prefers-reduced-motion: reduce) {
-  .rv, .rv.in { opacity: 1; transform: none; transition: none; }
-  .rise, .hero-name .ln, main.enter { animation: none; }
-  .thumb img, .blk figure img, .page-photo img { transition: none; }
-}
+body.calm .rv, body.calm .rv.in { opacity: 1; transform: none; transition: none; }
+body.calm .rise, body.calm .hero-name .ln, body.calm main.enter { animation: none; }
+body.calm .thumb img, body.calm .blk figure img, body.calm .page-photo img { transition: none; }
 body.editing .rv { opacity: 1; transform: none; transition: none; }
 
 /* Hidden projects (edit mode) */
@@ -412,10 +410,8 @@ body.is-opening .flow-top, body.is-opening .scroll-cue, body.is-opening .flow > 
 #sheet .back { display: none; }
 #sheet .phead { padding-top: 90px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .flow > *, .flow-top, #sheet, #sheet.open, .cur-label { transition: none; }
-  .scroll-cue::after { animation: none; }
-}
+body.calm .flow > *, body.calm .flow-top, body.calm #sheet, body.calm #sheet.open, body.calm .cur-label { transition: none; }
+body.calm .scroll-cue::after { animation: none; }
 /* ---------- Edit mode ---------- */
 .ui, .ui button, .ui input, .ui select, .ui textarea { font-family: "Geist", system-ui, -apple-system, Arial, sans-serif; font-size: 14px; line-height: 1.4; }
 .ui button, button.mini { cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 5px 10px; border-radius: 6px; font: 500 13px/1.3 "Geist", system-ui, Arial, sans-serif; }
@@ -619,6 +615,7 @@ function lighten(hex, amt) {
 }
 let fontLinkHref = "";
 function applyStyle() {
+  document.body.classList.toggle("calm", !!S.style.calm);
   const st = S.style;
   const fam = (f) => `"${f}", ${FONT_FALLBACK[f] || "Arial, sans-serif"}`;
   let dyn = $("#dyn-style"); if (!dyn) { dyn = document.createElement("style"); dyn.id = "dyn-style"; document.head.appendChild(dyn); }
@@ -986,7 +983,7 @@ function render(keepScroll) {
    Edit mode still uses the page-by-page views above.
    =================================================================== */
 const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789#%&*+=/<>";
-const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduceMotion = () => !!(S.style && S.style.calm);
 let flowFx = [], flowChapters = [], suppressScroll = false, introDone = false, scrambleObs = null;
 
 // Turns random characters into the real text, left to right.
@@ -1166,7 +1163,7 @@ function enhance(root) {
   root = root || app;
   if (revealObs) revealObs.disconnect();
   if (spyObs) spyObs.disconnect();
-  if (editing || matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+  if (editing || reduceMotion() || !("IntersectionObserver" in window)) return;
   const targets = root.querySelectorAll(root === app
     ? "main .blk, main .card, main .group-head, main .phead > *, main .page-photo, main .page-side, main .upd-list li, main .intro > *, main .group-intro"
     : ".content > .blk, .phead > *");
@@ -1448,6 +1445,7 @@ function styleDialog() {
     <label class="f"><span>Body font</span><select id="st-body">${fontOpts(st.body)}</select></label></div>
     <h3>Layout & color</h3>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="st-filters" ${st.showFilters !== false ? "checked" : ""}> Show filter buttons on the home page</label>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="st-calm" ${st.calm ? "checked" : ""}> Turn off animations (no unscramble, fades or slides)</label>
     <label class="f"><span>Page width</span><div class="range"><input type="range" id="st-w" min="860" max="1440" step="20" value="${st.width}"><output>${st.width}px</output></div></label>
     <label class="f"><span>Accent color <small>links, numbers, highlights</small></span><input type="color" id="st-accent" value="${esc(st.accent)}" style="width:64px;height:36px;border:1px solid var(--line);border-radius:6px;background:none"></label>
     <p class="hint">Tip: each section also has A− / A+ buttons to resize just that section.</p>`,
@@ -1459,6 +1457,7 @@ function styleDialog() {
       $("#st-body", d).addEventListener("change", e => { st.body = e.target.value; live(); });
       $("#st-accent", d).addEventListener("input", e => { st.accent = e.target.value; live(); });
       $("#st-filters", d).addEventListener("change", e => { st.showFilters = e.target.checked; markDirty(); });
+      $("#st-calm", d).addEventListener("change", e => { st.calm = e.target.checked; applyStyle(); markDirty(); });
       $("#st-name", d).addEventListener("input", e => { S.site.name = esc(e.target.value); markDirty(); });
       $("#st-foot", d).addEventListener("input", e => { S.site.footer = e.target.value; markDirty(); });
       $("#st-brand", d).addEventListener("change", e => { S.site.showBrand = e.target.checked; markDirty(); });
@@ -1648,7 +1647,7 @@ app.addEventListener("dragend", () => { drag = null; app.querySelectorAll(".drop
 document.addEventListener("click", (e) => {
   const t = e.target.closest && e.target.closest("[data-act], [data-toc]");
   if (!t) return;
-  if (t.dataset.toc) { e.preventDefault(); const el = document.getElementById(t.dataset.toc); if (el) el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); return; }
+  if (t.dataset.toc) { e.preventDefault(); const el = document.getElementById(t.dataset.toc); if (el) el.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth" }); return; }
   const act = t.dataset.act, list = t.dataset.list, i = t.dataset.i != null ? +t.dataset.i : null;
   e.preventDefault();
   switch (act) {
